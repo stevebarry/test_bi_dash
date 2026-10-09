@@ -1,0 +1,202 @@
+<!doctype html>
+<!--
+  Sales Dashboard — main page template (Jinja2, rendered by Flask).
+
+  This file is only the static skeleton of the page. Almost everything the
+  user sees is filled in at runtime by static/js/dashboard.js, which:
+    * fetches metadata and aggregated data from the /api/* endpoints,
+    * builds the multi-select filters and the KPI tiles,
+    * clones <template id="panel-template"> once per chart panel,
+    * draws charts with Chart.js and persists layout/filters in localStorage.
+
+  Element ids and data-* attributes below are the contract between this
+  markup and dashboard.js — rename them in both places or not at all.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <!-- Scale to the device width so the layout works on phones and tablets. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sales Dashboard</title>
+
+  <!-- All styling lives in one stylesheet; url_for builds the /static/ path. -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+
+  <!--
+    Theme bootstrap. This runs inline in <head>, before the body is painted,
+    so a saved light/dark preference is applied immediately. If it waited
+    for dashboard.js at the end of <body>, the page would briefly render in
+    the default theme and then "flash" to the saved one.
+  -->
+  <script>
+    // Apply a saved theme before first paint to avoid a flash.
+    try {
+      // The key must match the one dashboard.js writes when the user toggles.
+      const t = localStorage.getItem("dashboard.theme");
+      // Only accept known values; anything else falls back to the CSS default
+      // (which follows the OS colour-scheme preference).
+      if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+    } catch (e) {
+      // localStorage can throw (private mode, blocked storage). Ignore it:
+      // the page simply uses the default theme.
+    }
+  </script>
+</head>
+<body>
+  <!-- ================================================================
+       Top bar: page title, loaded date range, and global actions.
+       ================================================================ -->
+  <header class="topbar">
+    <div class="brand">
+      <h1>Sales Dashboard</h1>
+      <!-- Replaced by dashboard.js with the earliest–latest order dates
+           in the dataset once metadata has loaded. -->
+      <p class="subtitle" id="data-range">Loading…</p>
+    </div>
+    <div class="topbar-actions">
+      <!-- Switches between light and dark and saves the choice. -->
+      <button type="button" class="btn" id="theme-toggle" aria-label="Toggle colour theme">Theme</button>
+      <!-- Discards the saved panel layout and restores the default panels. -->
+      <button type="button" class="btn" id="reset-layout">Reset layout</button>
+      <!-- Appends a new chart panel to the grid. -->
+      <button type="button" class="btn btn-primary" id="add-chart">+ Add chart</button>
+    </div>
+  </header>
+
+  <!-- Error/status banner. Hidden until dashboard.js has something to say
+       (e.g. an API request failed). role="alert" makes screen readers
+       announce it as soon as it appears. -->
+  <div id="banner" class="banner" role="alert" hidden></div>
+
+  <!-- ================================================================
+       Filters. These apply globally: every KPI and every chart panel is
+       recomputed whenever one of them changes.
+       ================================================================ -->
+  <section class="filters" aria-label="Filters">
+    <!-- Quick date presets. Picking one fills in From/To below; editing
+         From/To by hand switches this to "Custom". -->
+    <div class="filter-group">
+      <label for="preset">Period</label>
+      <select id="preset">
+        <option value="all">All time</option>
+        <option value="30">Last 30 days</option>
+        <option value="90">Last 90 days</option>
+        <option value="365">Last 12 months</option>
+        <option value="ytd">Year to date</option>
+        <option value="custom">Custom</option>
+      </select>
+    </div>
+
+    <!-- Explicit date range. -->
+    <div class="filter-group">
+      <label for="date-from">From</label>
+      <input type="date" id="date-from">
+    </div>
+    <div class="filter-group">
+      <label for="date-to">To</label>
+      <input type="date" id="date-to">
+    </div>
+
+    <!--
+      Multi-select placeholders. These are empty on purpose: dashboard.js
+      finds every [data-multi] element and builds a checkbox dropdown inside
+      it, using the options returned by the metadata API.
+        data-multi  = the filter key sent to the API (and saved in storage)
+        data-label  = the visible label shown above the dropdown
+      An empty selection means "no filter", displayed as everything ticked.
+    -->
+    <div class="filter-group" data-multi="statuses" data-label="Status"></div>
+    <div class="filter-group" data-multi="categories" data-label="Category"></div>
+    <div class="filter-group" data-multi="store_states" data-label="Store state"></div>
+    <div class="filter-group" data-multi="customer_states" data-label="Customer state"></div>
+
+    <!-- Resets every filter above to its default. -->
+    <div class="filter-group filter-clear">
+      <button type="button" class="btn btn-ghost" id="clear-filters">Clear filters</button>
+    </div>
+  </section>
+
+  <!-- Headline KPI tiles (revenue, orders, etc.), rendered by dashboard.js
+       for the currently filtered data. -->
+  <section class="kpis" id="kpis" aria-label="Headline figures"></section>
+
+  <!-- Chart grid. Each panel is a clone of #panel-template appended here.
+       The set of panels and their settings are saved to localStorage. -->
+  <main class="grid" id="grid"></main>
+
+  <!-- ================================================================
+       Panel template. A <template> is inert: the browser parses it but
+       does not render it or run anything in it. dashboard.js clones its
+       content for each chart panel and wires up the controls.
+       ================================================================ -->
+  <template id="panel-template">
+    <article class="panel">
+      <header class="panel-head">
+        <!-- Editable title. Left blank, the panel shows an auto-generated
+             title based on its measure and grouping. -->
+        <input class="panel-title" type="text" aria-label="Chart title">
+
+        <!-- Per-panel actions. A single click handler on the panel reads
+             data-action to decide what to do. -->
+        <div class="panel-actions">
+          <!-- Toggles the "wide" class so the panel spans the full grid row. -->
+          <button type="button" class="icon-btn" data-action="wide" title="Toggle width" aria-label="Toggle width">⇔</button>
+          <!-- A link, not a button: its href is set to /api/aggregate.csv
+               with this panel's query, so the browser downloads the file. -->
+          <a class="icon-btn" data-action="csv" title="Download CSV" aria-label="Download CSV">⤓</a>
+          <!-- Inserts a copy of this panel directly after it. -->
+          <button type="button" class="icon-btn" data-action="duplicate" title="Duplicate" aria-label="Duplicate chart">⧉</button>
+          <!-- Deletes this panel from the grid. -->
+          <button type="button" class="icon-btn" data-action="remove" title="Remove" aria-label="Remove chart">✕</button>
+        </div>
+      </header>
+
+      <!-- Query controls. Each <select> is located by its data-field, which
+           matches the property it edits on the panel's settings object. -->
+      <div class="panel-controls">
+        <!-- Main grouping (x-axis / categories), e.g. month or category.
+             Options are filled from the metadata API. -->
+        <label>Group by <select data-field="dimension"></select></label>
+        <!-- Optional second dimension that splits each group into series. -->
+        <label>Breakdown <select data-field="breakdown"></select></label>
+        <!-- The value being aggregated, e.g. revenue or order count. -->
+        <label>Measure <select data-field="measure"></select></label>
+        <!-- How the result is drawn. "table" swaps the canvas for an HTML table. -->
+        <label>Chart
+          <select data-field="type">
+            <option value="bar">Bar</option>
+            <option value="hbar">Horizontal bar</option>
+            <option value="stacked">Stacked bar</option>
+            <option value="line">Line</option>
+            <option value="area">Area</option>
+            <option value="doughnut">Doughnut</option>
+            <option value="table">Table</option>
+          </select>
+        </label>
+        <!-- Keep only the top N groups. Disabled for time dimensions,
+             where the full series is always shown. -->
+        <label>Top
+          <select data-field="limit">
+            <option>5</option><option>10</option><option>15</option>
+            <option>20</option><option>30</option><option>50</option>
+          </select>
+        </label>
+      </div>
+
+      <!-- Output area. Exactly one of these three is visible at a time:
+           the chart canvas, the table, or a message (loading / no data / error). -->
+      <div class="panel-body">
+        <div class="chart-wrap"><canvas></canvas></div>
+        <div class="table-wrap" hidden></div>
+        <p class="panel-message" hidden></p>
+      </div>
+    </article>
+  </template>
+
+  <!-- Scripts load at the end of <body> so the markup above already exists
+       when they run. Chart.js comes first because dashboard.js depends on
+       the global `Chart` it defines. The version is pinned for stability. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>
