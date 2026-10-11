@@ -13,6 +13,7 @@ A Flask web dashboard for analysing the retail sales data in `schema.sql` by pro
   - **Chart type:** bar, horizontal bar, stacked bar, line, area, doughnut or table.
   - **Top N:** how many groups to show.
 - **Panel actions:** add, duplicate, remove, widen, rename and download as CSV.
+- **PDF export:** "Export PDF" downloads a report of the current view: active filters, KPI tiles and every panel (charts as images, table panels as tables). Built in the browser with jsPDF, loaded from the CDN on first use.
 - The panel layout and filters are saved in your browser.
 
 ## Setup
@@ -64,10 +65,12 @@ The tests cover the SQL builder and the API routes. They use a fake database, so
 | File | Role |
 |---|---|
 | `config.py` | Loads `config.ini`. |
-| `db.py` | psycopg connection pool. Sets `search_path` to the configured schema. |
+| `db.py` | psycopg connection pool. Sets `search_path` to the configured schema and logs every SQL statement run to `sql.log` (configurable via `[logging] sql_log`). |
 | `queries.py` | Fixed lists of allowed dimensions, measures and filters, plus the SQL builder. |
 | `app.py` | Flask routes: `/`, `/api/meta`, `/api/aggregate`, `/api/aggregate.csv`, `/api/kpis`. |
 | `templates/`, `static/` | Dashboard page, built with Chart.js 4. |
+| `static/js/dashboard/` | Generic dashboard framework (ES modules): filters, KPI tiles, chart panels. No knowledge of the sales schema. |
+| `static/js/sales/` | Sales-specific front-end config (filters, KPIs, default layout) and the page entry point. |
 
 The browser sends a chart description to the server:
 

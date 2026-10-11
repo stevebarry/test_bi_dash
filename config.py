@@ -46,9 +46,16 @@ class AppConfig:
 
 
 @dataclass(frozen=True)
+class LoggingConfig:
+    # File that receives one line per SQL statement executed; None disables it.
+    sql_log: Path | None
+
+
+@dataclass(frozen=True)
 class Settings:
     database: DatabaseConfig
     app: AppConfig
+    logging: LoggingConfig
 
 
 def load_settings(path: str | os.PathLike | None = None) -> Settings:
@@ -79,4 +86,11 @@ def load_settings(path: str | os.PathLike | None = None) -> Settings:
         port=int(app_section.get("port", 5000)),
         debug=str(app_section.get("debug", "false")).lower() in ("1", "true", "yes", "on"),
     )
-    return Settings(database=database, app=app)
+
+    # [logging] sql_log: path of the SQL log file, relative to the config
+    # file's folder. Defaults to sql.log; set it empty to turn logging off.
+    log_section = parser["logging"] if parser.has_section("logging") else {}
+    sql_log = str(log_section.get("sql_log", "sql.log")).strip()
+    logging_cfg = LoggingConfig(sql_log=(config_path.parent / sql_log) if sql_log else None)
+
+    return Settings(database=database, app=app, logging=logging_cfg)

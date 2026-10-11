@@ -3,14 +3,17 @@
   Sales Dashboard — main page template (Jinja2, rendered by Flask).
 
   This file is only the static skeleton of the page. Almost everything the
-  user sees is filled in at runtime by static/js/dashboard.js, which:
-    * fetches metadata and aggregated data from the /api/* endpoints,
-    * builds the multi-select filters and the KPI tiles,
-    * clones <template id="panel-template"> once per chart panel,
-    * draws charts with Chart.js and persists layout/filters in localStorage.
+  user sees is filled in at runtime by the JavaScript under static/js/:
+    * static/js/dashboard/  generic dashboard framework (ES modules) which
+        - fetches metadata and aggregated data from the /api/* endpoints,
+        - builds the multi-select filters and the KPI tiles,
+        - clones <template id="panel-template"> once per chart panel,
+        - draws charts with Chart.js and persists layout/filters in localStorage;
+    * static/js/sales/      the sales data-model config (filters, KPIs,
+        default layout) and the entry point that starts the framework.
 
   Element ids and data-* attributes below are the contract between this
-  markup and dashboard.js — rename them in both places or not at all.
+  markup and static/js/dashboard/ — rename them in both places or not at all.
 -->
 <html lang="en">
 <head>
@@ -25,13 +28,13 @@
   <!--
     Theme bootstrap. This runs inline in <head>, before the body is painted,
     so a saved light/dark preference is applied immediately. If it waited
-    for dashboard.js at the end of <body>, the page would briefly render in
+    for the dashboard scripts at the end of <body>, the page would briefly render in
     the default theme and then "flash" to the saved one.
   -->
   <script>
     // Apply a saved theme before first paint to avoid a flash.
     try {
-      // The key must match the one dashboard.js writes when the user toggles.
+      // The key must match the one static/js/dashboard/theme.js writes when the user toggles.
       const t = localStorage.getItem("dashboard.theme");
       // Only accept known values; anything else falls back to the CSS default
       // (which follows the OS colour-scheme preference).
@@ -49,8 +52,8 @@
   <header class="topbar">
     <div class="brand">
       <h1>Sales Dashboard</h1>
-      <!-- Replaced by dashboard.js with the earliest–latest order dates
-           in the dataset once metadata has loaded. -->
+      <!-- Replaced at runtime (text from the data-model config's
+           dataRangeText) once metadata has loaded. -->
       <p class="subtitle" id="data-range">Loading…</p>
     </div>
     <div class="topbar-actions">
@@ -58,12 +61,15 @@
       <button type="button" class="btn" id="theme-toggle" aria-label="Toggle colour theme">Theme</button>
       <!-- Discards the saved panel layout and restores the default panels. -->
       <button type="button" class="btn" id="reset-layout">Reset layout</button>
+      <!-- Downloads a PDF of the KPIs and every chart panel as currently
+           shown (built in the browser by static/js/dashboard/pdf.js). -->
+      <button type="button" class="btn" id="export-pdf">Export PDF</button>
       <!-- Appends a new chart panel to the grid. -->
       <button type="button" class="btn btn-primary" id="add-chart">+ Add chart</button>
     </div>
   </header>
 
-  <!-- Error/status banner. Hidden until dashboard.js has something to say
+  <!-- Error/status banner. Hidden until the dashboard has something to say
        (e.g. an API request failed). role="alert" makes screen readers
        announce it as soon as it appears. -->
   <div id="banner" class="banner" role="alert" hidden></div>
@@ -98,26 +104,21 @@
     </div>
 
     <!--
-      Multi-select placeholders. These are empty on purpose: dashboard.js
-      finds every [data-multi] element and builds a checkbox dropdown inside
-      it, using the options returned by the metadata API.
-        data-multi  = the filter key sent to the API (and saved in storage)
-        data-label  = the visible label shown above the dropdown
+      Multi-select filters are inserted here, just before "Clear filters",
+      one per entry in the data-model config's multiFilters (see
+      static/js/sales/config.js). Each becomes a
+      <div class="filter-group" data-multi="<key>"> with a checkbox dropdown.
       An empty selection means "no filter", displayed as everything ticked.
     -->
-    <div class="filter-group" data-multi="statuses" data-label="Status"></div>
-    <div class="filter-group" data-multi="categories" data-label="Category"></div>
-    <div class="filter-group" data-multi="store_states" data-label="Store state"></div>
-    <div class="filter-group" data-multi="customer_states" data-label="Customer state"></div>
 
-    <!-- Resets every filter above to its default. -->
+    <!-- Resets every filter to its default. -->
     <div class="filter-group filter-clear">
       <button type="button" class="btn btn-ghost" id="clear-filters">Clear filters</button>
     </div>
   </section>
 
-  <!-- Headline KPI tiles (revenue, orders, etc.), rendered by dashboard.js
-       for the currently filtered data. -->
+  <!-- Headline KPI tiles (the measures listed in the config's kpis),
+       rendered for the currently filtered data. -->
   <section class="kpis" id="kpis" aria-label="Headline figures"></section>
 
   <!-- Chart grid. Each panel is a clone of #panel-template appended here.
@@ -126,7 +127,7 @@
 
   <!-- ================================================================
        Panel template. A <template> is inert: the browser parses it but
-       does not render it or run anything in it. dashboard.js clones its
+       does not render it or run anything in it. panels.js clones its
        content for each chart panel and wires up the controls.
        ================================================================ -->
   <template id="panel-template">
@@ -194,9 +195,11 @@
   </template>
 
   <!-- Scripts load at the end of <body> so the markup above already exists
-       when they run. Chart.js comes first because dashboard.js depends on
-       the global `Chart` it defines. The version is pinned for stability. -->
+       when they run. Chart.js comes first because the dashboard depends on
+       the global `Chart` it defines. The version is pinned for stability.
+       The entry point is an ES module; it imports the generic framework
+       from static/js/dashboard/ and starts it with the sales config. -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-  <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/sales/main.js') }}"></script>
 </body>
 </html>

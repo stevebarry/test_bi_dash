@@ -3,5 +3,8 @@ __pycache__/
 .pytest_cache/
 *.pyc
 
+# SQL log written by db.py (plus rotated copies)
+sql.log*
+
 # Local configuration with database credentials (see config.example.ini)
 config.ini

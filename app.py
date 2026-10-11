@@ -13,7 +13,7 @@ from psycopg_pool import PoolTimeout
 
 import queries
 from config import load_settings
-from db import Database
+from db import Database, configure_sql_log
 
 log = logging.getLogger(__name__)
 
@@ -22,6 +22,9 @@ def create_app(config_path=None, database=None) -> Flask:
     settings = load_settings(config_path)
     app = Flask(__name__)
     app.config["SETTINGS"] = settings
+
+    # Record every SQL statement the app runs in the configured log file.
+    configure_sql_log(settings.logging.sql_log)
 
     db = database or Database(settings.database)
     if database is None:
